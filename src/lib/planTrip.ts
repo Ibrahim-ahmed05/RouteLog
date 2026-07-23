@@ -1,7 +1,8 @@
-// Trip planning API client with a self-contained fallback.
-// If VITE_API_URL is set, POST to `${VITE_API_URL}/api/plan-trip/`.
-// Otherwise, geocode with Nominatim + route with OSRM (both free, no key)
-// and compute HOS-compliant logs client-side.
+// Trip planning API client with self-contained client-side fallback.
+// If backend is running or user is authenticated, calls Django POST /api/trips/create/
+// Otherwise, geocodes with Nominatim + routes with OSRM and computes HOS client-side.
+
+import { supabase } from "./supabase";
 
 export type StopType = "start" | "pickup" | "rest" | "fuel" | "dropoff";
 
@@ -48,11 +49,31 @@ export interface PlanTripInput {
 }
 
 export interface PlanTripResult {
+  trip_id?: string;
   route: RoutePayload;
   daily_logs: DailyLog[];
 }
 
-const API_URL = import.meta.env.VITE_API_URL as string | undefined;
+function getApiBaseUrl(): string {
+  const configuredApiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
+  if (configuredApiUrl) {
+    return configuredApiUrl;
+  }
+
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return "http://localhost:8000/api";
+    }
+
+    return `${window.location.origin}/api`;
+  }
+
+  return "http://localhost:8000/api";
+}
+
+const API_BASE_URL = getApiBaseUrl();
+const NORMALIZED_API_BASE_URL = API_BASE_URL.replace(/\/$/, "");
 
 async function geocode(q: string): Promise<{ lat: number; lng: number; label: string }> {
   const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`;
@@ -67,10 +88,10 @@ async function osrmRoute(points: { lat: number; lng: number }[]) {
   const coords = points.map((p) => `${p.lng},${p.lat}`).join(";");
   const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error("Routing failed");
   const data = await res.json();
+  if (!res.ok || data.code === "NoRoute") throw new Error("No drivable route found");
   const r = data.routes?.[0];
-  if (!r) throw new Error("No route found");
+  if (!r) throw new Error("No drivable route found");
   return {
     distance_m: r.distance as number,
     duration_s: r.duration as number,
@@ -78,6 +99,25 @@ async function osrmRoute(points: { lat: number; lng: number }[]) {
       ([lng, lat]) => [lat, lng] as [number, number],
     ),
   };
+}
+
+export function getTripPlanningErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+
+  if (/no drivable route|noroute|routing failed|no route found/i.test(message)) {
+    return "We couldn’t find a continuous road route between these locations. Choose places connected by road; trips across oceans require separate transport.";
+  }
+
+  const noMatch = message.match(/No match for "(.+)"/i);
+  if (noMatch) {
+    return `We couldn’t find “${noMatch[1]}”. Check the spelling and include the city and country.`;
+  }
+
+  if (/geocode failed|failed to fetch|network/i.test(message)) {
+    return "We couldn’t verify one or more locations right now. Check your connection and try again.";
+  }
+
+  return "We couldn’t calculate this route right now. Please review the locations and try again.";
 }
 
 function fmtHM(totalMin: number): string {
@@ -93,21 +133,11 @@ function addISODays(base: Date, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-// Build HOS-compliant daily logs from total drive hours + cycle used.
-// FMCSA property-carrying rules (simplified):
-// - 11 hrs driving per day
-// - 14 hrs on-duty window
-// - 30-min break after 8 hrs driving
-// - 10 hrs off duty between shifts
-// - 70 hrs / 8 days cycle
-// - 1 hr on-duty for pickup, 1 hr on-duty for dropoff
-// - 30 min fuel stop every ~1000 miles
 function buildLogs(driveHours: number, distanceMiles: number, cycleUsed: number): DailyLog[] {
   const startDate = new Date();
   startDate.setHours(0, 0, 0, 0);
 
   const fuelStops = Math.max(0, Math.floor(distanceMiles / 1000));
-  // Total on-duty work = drive + 1 pickup + 1 dropoff + 0.5 per fuel
   const totalDriveMin = driveHours * 60;
   const totalOnDutyExtraMin = 60 + 60 + fuelStops * 30;
 
@@ -120,18 +150,15 @@ function buildLogs(driveHours: number, distanceMiles: number, cycleUsed: number)
 
   while (driveRemaining > 0 || onDutyExtraRemaining > 0) {
     const segments: LogSegment[] = [];
-    // Shift starts at 06:00
     let cursor = 6 * 60;
     const shiftStart = cursor;
 
-    // Sleeper berth before the shift: 00:00 -> 06:00 = off_duty for day 1, sleeper_berth after
     if (day === 0) {
       segments.push({ status: "off_duty", start: "00:00", end: fmtHM(shiftStart) });
     } else {
       segments.push({ status: "sleeper_berth", start: "00:00", end: fmtHM(shiftStart) });
     }
 
-    // Pickup (day 1 only, first thing)
     if (!pickupDone && onDutyExtraRemaining >= 60) {
       segments.push({
         status: "on_duty_not_driving",
@@ -149,13 +176,11 @@ function buildLogs(driveHours: number, distanceMiles: number, cycleUsed: number)
     const maxDriveToday = Math.min(11 * 60, driveRemaining, cycleRemaining);
     const shiftEndCap = shiftStart + 14 * 60;
 
-    // Driving loop with mandatory 30-min break after 8 hrs driving
     while (
       driveToday < maxDriveToday &&
       cursor < shiftEndCap &&
       driveRemaining > 0
     ) {
-      // Insert 30-min break if approaching 8h continuous drive
       if (driveSinceBreak >= 8 * 60) {
         const breakEnd = Math.min(cursor + 30, shiftEndCap);
         segments.push({ status: "off_duty", start: fmtHM(cursor), end: fmtHM(breakEnd) });
@@ -165,7 +190,7 @@ function buildLogs(driveHours: number, distanceMiles: number, cycleUsed: number)
       }
 
       const chunk = Math.min(
-        4 * 60, // drive in 4h chunks so we can interleave a fuel stop
+        4 * 60,
         maxDriveToday - driveToday,
         shiftEndCap - cursor,
         driveRemaining,
@@ -179,9 +204,7 @@ function buildLogs(driveHours: number, distanceMiles: number, cycleUsed: number)
       driveRemaining -= chunk;
       cycleRemaining -= chunk;
 
-      // Fuel stop if remaining
       if (onDutyExtraRemaining >= 30 && driveRemaining > 0 && cursor + 30 <= shiftEndCap) {
-        // reserve fuel time only if we have fuel stops beyond pickup/dropoff
         if (onDutyExtraRemaining > 60) {
           segments.push({
             status: "on_duty_not_driving",
@@ -195,7 +218,6 @@ function buildLogs(driveHours: number, distanceMiles: number, cycleUsed: number)
       }
     }
 
-    // Dropoff (last day only, when drive is exhausted)
     if (driveRemaining <= 0 && onDutyExtraRemaining >= 60 && cursor + 60 <= shiftEndCap) {
       segments.push({
         status: "on_duty_not_driving",
@@ -207,12 +229,10 @@ function buildLogs(driveHours: number, distanceMiles: number, cycleUsed: number)
       cycleRemaining -= 60;
     }
 
-    // Rest of day: sleeper berth
     if (cursor < 24 * 60) {
       segments.push({ status: "sleeper_berth", start: fmtHM(cursor), end: "24:00" });
     }
 
-    // Totals
     const totals: Record<DutyStatus, number> = {
       off_duty: 0,
       sleeper_berth: 0,
@@ -240,7 +260,7 @@ function buildLogs(driveHours: number, distanceMiles: number, cycleUsed: number)
     });
 
     day++;
-    if (day > 14) break; // safety
+    if (day > 14) break;
   }
 
   return logs;
@@ -264,7 +284,6 @@ function distributeStops(
     eta: `Day 1 · 07:00`,
   });
 
-  // Rest stops at the end of each day (except last)
   for (let i = 0; i < logs.length - 1; i++) {
     const frac = (i + 1) / logs.length;
     const idx = Math.min(geo.length - 1, Math.floor(geo.length * frac));
@@ -278,7 +297,6 @@ function distributeStops(
     });
   }
 
-  // Fuel stops every ~1000 miles
   const fuelCount = Math.max(0, Math.floor(totalMiles / 1000));
   for (let i = 1; i <= fuelCount; i++) {
     const frac = i / (fuelCount + 1);
@@ -299,17 +317,43 @@ function distributeStops(
 }
 
 export async function planTrip(input: PlanTripInput): Promise<PlanTripResult> {
-  if (API_URL) {
-    const res = await fetch(`${API_URL.replace(/\/$/, "")}/api/plan-trip/`, {
+  // Try Django backend API first
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (session?.access_token) {
+      headers["Authorization"] = `Bearer ${session.access_token}`;
+    }
+    if (session?.user?.id) {
+      headers["X-Supabase-Uid"] = session.user.id;
+    }
+    if (session?.user?.email) {
+      headers["X-Supabase-Email"] = session.user.email;
+    }
+
+    const res = await fetch(`${NORMALIZED_API_BASE_URL}/trips/create/`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(input),
     });
-    if (!res.ok) throw new Error(`API error ${res.status}`);
-    return (await res.json()) as PlanTripResult;
+
+    if (res.ok) {
+      return (await res.json()) as PlanTripResult;
+    } else {
+      const errText = await res.text();
+      console.error(`Django API error (${res.status}):`, errText);
+      if (session?.access_token) {
+        throw new Error(`Server returned status ${res.status}: ${errText}`);
+      }
+    }
+  } catch (e: any) {
+    if (e.message && e.message.includes("Server returned")) {
+      throw e;
+    }
+    console.warn("Backend API unavailable, falling back to client-side planning", e);
   }
 
-  // Client-side fallback
+  // Client-side fallback for unauthenticated users when backend is offline
   const [cur, pu, doff] = await Promise.all([
     geocode(input.current_location),
     geocode(input.pickup_location),
@@ -320,7 +364,7 @@ export async function planTrip(input: PlanTripInput): Promise<PlanTripResult> {
   const driveHours = r.duration_s / 3600;
   const logs = buildLogs(driveHours, distanceMiles, input.current_cycle_used);
   const stops = distributeStops(r, logs, pu, doff);
-  // Add starting point as first stop
+
   stops.unshift({
     type: "start",
     location: cur.label.split(",")[0],

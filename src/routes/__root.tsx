@@ -8,6 +8,8 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
+import { Toaster } from "sonner";
+import { AuthProvider } from "../lib/auth";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -92,8 +94,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "RouteLog — Plan Your Route. Stay Compliant." },
       { name: "twitter:description", content: "Plan compliant trucking trips and auto-generate FMCSA-ready daily log sheets. Route optimization, rest & fuel stops, HOS compliance." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/e106ffb4-ae9e-45c5-a27b-f30347cbde9b/id-preview-d0dc093c--6b9f1772-ed93-4264-9f28-45d5acb7bb61.lovable.app-1784699021355.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/e106ffb4-ae9e-45c5-a27b-f30347cbde9b/id-preview-d0dc093c--6b9f1772-ed93-4264-9f28-45d5acb7bb61.lovable.app-1784699021355.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -135,8 +135,10 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
+      <AuthProvider>
+        <Outlet />
+        <Toaster position="top-right" richColors />
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

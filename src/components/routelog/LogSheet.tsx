@@ -63,7 +63,7 @@ export function LogSheet({ log, index }: { log: DailyLog; index: number }) {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.05 * index }}
-      className="rounded-2xl bg-card p-5 hairline sm:p-6"
+      className="rounded-2xl bg-card p-4 hairline sm:p-6"
     >
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
@@ -82,7 +82,7 @@ export function LogSheet({ log, index }: { log: DailyLog; index: number }) {
         </button>
       </div>
 
-      <div className="w-full overflow-x-auto">
+      <div className="w-full overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
         <svg viewBox={`0 0 ${W} ${H}`} className="min-w-[720px]">
           {/* Row labels */}
           {ROWS.map((r, i) => (

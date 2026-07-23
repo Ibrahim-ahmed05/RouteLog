@@ -15,7 +15,7 @@ export function Results({ data }: { data: PlanTripResult }) {
       initial={{ opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      className="mx-auto max-w-6xl px-6 pb-24"
+      className="mx-auto max-w-6xl px-4 pb-16 sm:px-6 sm:pb-24"
     >
       <div className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
         Trip plan
@@ -42,7 +42,7 @@ export function Results({ data }: { data: PlanTripResult }) {
 
       {/* Log sheets */}
       <div className="mt-14">
-        <div className="flex items-end justify-between">
+        <div className="flex items-end justify-between gap-3">
           <h3 className="text-2xl font-semibold tracking-tight">Daily logs</h3>
           <div className="hidden text-xs text-muted-foreground sm:block">
             FMCSA-style · auto-drawn
@@ -75,11 +75,11 @@ export function Results({ data }: { data: PlanTripResult }) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-card p-5">
+    <div className="bg-card p-4 sm:p-5">
       <div className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
         {label}
       </div>
-      <div className="mt-1.5 text-2xl font-semibold tracking-tight tabular-nums">{value}</div>
+      <div className="mt-1.5 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl">{value}</div>
     </div>
   );
 }

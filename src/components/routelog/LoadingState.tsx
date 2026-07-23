@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { DotLottieReact } from "@lottiefiles/dotlottie-react";
 
 export function LoadingState() {
   return (
@@ -8,6 +9,20 @@ export function LoadingState() {
           Planning your trip
         </div>
         <div className="mt-2 text-lg font-medium">Charting the route…</div>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+          className="mx-auto mt-5 h-40 w-full max-w-sm sm:h-48"
+        >
+          <DotLottieReact
+            src="https://lottie.host/52c5fcb9-7ce1-4d3c-a08d-3b243dbdf45f/ndBR8CYt0E.lottie"
+            loop
+            autoplay
+            className="h-full w-full"
+            aria-label="Route calculation in progress"
+          />
+        </motion.div>
         <svg viewBox="0 0 800 120" className="mt-6 w-full">
           <motion.path
             d="M 20 60 C 160 60, 220 20, 380 60 S 640 100, 780 60"

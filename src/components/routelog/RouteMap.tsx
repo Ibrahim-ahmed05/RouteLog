@@ -55,7 +55,7 @@ export function RouteMap({ route }: { route: RoutePayload }) {
   return (
     <div
       ref={ref}
-      className="h-[440px] w-full overflow-hidden rounded-2xl hairline"
+      className="h-[300px] w-full overflow-hidden rounded-2xl hairline sm:h-[380px] lg:h-[440px]"
       style={{ background: "var(--muted)" }}
     />
   );

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { AlertCircle, MapPin, Package, Flag, Loader2 } from "lucide-react";
 import type { PlanTripInput } from "@/lib/planTrip";
+import { LocationInput } from "./LocationInput";
 
 interface Props {
   onSubmit: (input: PlanTripInput) => void;
@@ -31,7 +32,7 @@ export function TripForm({ onSubmit, loading, error }: Props) {
   }
 
   return (
-    <section id="plan" className="mx-auto max-w-3xl px-6 py-16 sm:py-24">
+    <section id="plan" className="mx-auto max-w-3xl px-4 py-14 sm:px-6 sm:py-24">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -46,7 +47,7 @@ export function TripForm({ onSubmit, loading, error }: Props) {
           Where are you headed?
         </h2>
         <p className="mt-3 text-sm text-muted-foreground sm:text-base">
-          Enter your trip. We'll handle the rest stops.
+          Type to search locations with instant autocomplete suggestions.
         </p>
       </motion.div>
 
@@ -56,31 +57,31 @@ export function TripForm({ onSubmit, loading, error }: Props) {
         viewport={{ once: true, margin: "-80px" }}
         transition={{ duration: 0.55, delay: 0.1 }}
         onSubmit={handleSubmit}
-        className="mt-10 rounded-3xl bg-card p-6 shadow-soft hairline sm:p-8"
+        className="mt-8 rounded-3xl bg-card p-5 shadow-soft hairline sm:mt-10 sm:p-8"
       >
         <div className="grid gap-5">
-          <Field
+          <LocationInput
             label="Current location"
             icon={MapPin}
             value={current}
             onChange={setCurrent}
-            placeholder="City, State"
+            placeholder="Search city, e.g. Chicago, IL"
             invalid={touched && !current.trim()}
           />
-          <Field
+          <LocationInput
             label="Pickup location"
             icon={Package}
             value={pickup}
             onChange={setPickup}
-            placeholder="City, State"
+            placeholder="Search pickup city, e.g. St. Louis, MO"
             invalid={touched && !pickup.trim()}
           />
-          <Field
+          <LocationInput
             label="Dropoff location"
             icon={Flag}
             value={dropoff}
             onChange={setDropoff}
-            placeholder="City, State"
+            placeholder="Search destination city, e.g. Dallas, TX"
             invalid={touched && !dropoff.trim()}
           />
 
@@ -106,21 +107,28 @@ export function TripForm({ onSubmit, loading, error }: Props) {
         </div>
 
         {error && (
-          <div className="mt-6 flex items-start gap-2.5 rounded-xl bg-destructive/8 p-3.5 text-sm text-destructive hairline">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{error}</span>
+          <div
+            role="alert"
+            aria-live="polite"
+            className="mt-6 flex items-start gap-3 rounded-2xl border border-destructive/20 bg-destructive/8 p-4 text-sm text-destructive"
+          >
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-semibold">We couldn’t calculate this route</p>
+              <p className="mt-1 leading-relaxed text-destructive/80">{error}</p>
+            </div>
           </div>
         )}
 
         <button
           type="submit"
           disabled={loading}
-          className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-foreground px-6 py-4 text-sm font-medium text-background transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
+          className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-foreground px-6 py-4 text-sm font-medium text-background transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70 shadow-soft"
         >
           {loading ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              Calculating…
+              Calculating route & daily logs…
             </>
           ) : (
             "Calculate route & logs"
@@ -128,42 +136,5 @@ export function TripForm({ onSubmit, loading, error }: Props) {
         </button>
       </motion.form>
     </section>
-  );
-}
-
-function Field({
-  label,
-  icon: Icon,
-  value,
-  onChange,
-  placeholder,
-  invalid,
-}: {
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  invalid?: boolean;
-}) {
-  return (
-    <label className="block">
-      <span className="text-sm font-medium text-foreground">{label}</span>
-      <div
-        className={`mt-2 flex items-center gap-2.5 rounded-xl bg-background px-3.5 py-3 transition-all duration-200 ${
-          invalid
-            ? "shadow-[0_0_0_1px_var(--destructive)]"
-            : "hairline focus-within:shadow-[0_0_0_1.5px_var(--ring)]"
-        }`}
-      >
-        <Icon className="h-4 w-4 text-muted-foreground" />
-        <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
-        />
-      </div>
-    </label>
   );
 }
